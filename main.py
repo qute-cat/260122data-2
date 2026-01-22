@@ -15,7 +15,7 @@ st.title("📊 AI 에이전트 일자리 생태계 연도·국가 분석")
 
 st.markdown("""
 이 웹앱은 **AI 에이전트 관련 일자리·프로젝트·기술 기회 데이터**를 기반으로  
-연도별 변화와 **도메인 기반 국가 생태계 분포**를 분석합니다.
+연도별 변화와 **도메인 기반 국가 생태계 구조**를 분석합니다.
 """)
 
 # =========================
@@ -31,7 +31,7 @@ df_list = []
 try:
     base_df = load_csv(BASE_FILE)
     df_list.append(base_df)
-except Exception as e:
+except:
     st.error("기본 데이터 파일을 불러오지 못했습니다.")
 
 uploaded_files = st.file_uploader(
@@ -104,62 +104,89 @@ year_country = (
 )
 
 # =========================
-# 6. Plotly 시각화
+# 6. 그래프 ① 연도별 국가 분포
 # =========================
 st.subheader("📈 연도별 AI 에이전트 생태계 국가 분포")
 
-fig = px.line(
+max_y = max(20, year_country["count"].max() + 1)
+
+fig1 = px.line(
     year_country,
     x="Year",
     y="count",
     color="country",
     markers=True,
-    title="Yearly Distribution of AI Agent Ecosystem (Domain-based Country)"
+    title="Yearly Distribution by Country (Domain-based)"
 )
 
-fig.update_layout(
+fig1.update_layout(
     xaxis_title="Year",
     yaxis_title="Number of Opportunities",
-    legend_title="Country"
+    legend_title="Country",
+    yaxis=dict(range=[0, max_y], dtick=1)
 )
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig1, use_container_width=True)
 
 # =========================
-# 7. 해석 자동 생성
+# 7. 그래프 ② Global vs Country 비교
+# =========================
+st.subheader("🌍 Global vs 국가 기반 생태계 비교")
+
+df["ecosystem_type"] = df["country"].apply(
+    lambda x: "Global" if x == "Global" else "Country-based"
+)
+
+year_ecosystem = (
+    df.groupby(["Year", "ecosystem_type"])
+      .size()
+      .reset_index(name="count")
+)
+
+fig2 = px.bar(
+    year_ecosystem,
+    x="Year",
+    y="count",
+    color="ecosystem_type",
+    barmode="stack",
+    title="Global vs Country-based AI Agent Ecosystem (Yearly)"
+)
+
+fig2.update_layout(
+    xaxis_title="Year",
+    yaxis_title="Number of Opportunities",
+    legend_title="Ecosystem Type"
+)
+
+st.plotly_chart(fig2, use_container_width=True)
+
+# =========================
+# 8. 해석 자동 생성
 # =========================
 st.subheader("🧠 분석 해석")
 
-latest_year = int(year_country["Year"].max())
-latest_data = year_country[year_country["Year"] == latest_year]
+latest_year = int(df["Year"].max())
+latest = df[df["Year"] == latest_year]
 
-total_count = latest_data["count"].sum()
-global_count = latest_data.loc[
-    latest_data["country"] == "Global", "count"
-].sum()
+global_count = (latest["ecosystem_type"] == "Global").sum()
+country_count = (latest["ecosystem_type"] == "Country-based").sum()
+total = global_count + country_count
 
-global_ratio = (global_count / total_count) * 100 if total_count > 0 else 0
+global_ratio = (global_count / total) * 100 if total > 0 else 0
 
 st.markdown(f"""
-### 🔎 {latest_year}년 기준 해석
+### 🔎 {latest_year}년 기준 종합 해석
 
 - AI 에이전트 관련 기회의 **{global_ratio:.1f}%**가  
-  특정 국가가 아닌 **글로벌 도메인(Global)**을 기반으로 생성되고 있습니다.
+  **글로벌 플랫폼·도메인 기반(Global)**에서 발생하고 있습니다.
 - 이는 AI 에이전트 일자리 생태계가  
-  **국가 중심 구조에서 글로벌·원격·플랫폼 중심 구조로 이동**하고 있음을 시사합니다.
-""")
-
-non_global = latest_data[latest_data["country"] != "Global"]
-
-if not non_global.empty:
-    top_row = non_global.sort_values("count", ascending=False).iloc[0]
-    st.markdown(f"""
-- 글로벌을 제외하면 **{top_row['country']}** 기반 도메인이 가장 높은 비중을 차지합니다.
-- 이는 해당 국가가 **AI 에이전트 기술·일자리 생태계의 주요 거점**으로 기능하고 있음을 의미합니다.
+  **국가 단위 고용시장보다 글로벌 디지털 생태계 중심으로 구조 전환**되고 있음을 보여줍니다.
+- 국가 기반 기회는 여전히 존재하지만,  
+  글로벌 생태계가 **확산 속도와 접근성 측면에서 우위를 점하고 있음**을 시사합니다.
 """)
 
 st.markdown("""
 📌 **해석 유의사항**  
-본 분석은 고용 위치가 아니라,  
-**AI 에이전트 기회가 생성·공유되는 디지털 생태계의 기반 국가**를 추정한 결과입니다.
+본 분석은 고용 위치가 아닌,  
+AI 에이전트 기회가 생성·유통되는 **디지털 생태계의 기반 구조**를 추정한 결과입니다.
 """)
