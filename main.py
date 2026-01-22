@@ -1,192 +1,176 @@
 import streamlit as st
 import pandas as pd
-from urllib.parse import urlparse
 import plotly.express as px
+import re
 
-# =========================
-# 1. 기본 설정
-# =========================
+# ---------------------------
+# 기본 설정
+# ---------------------------
 st.set_page_config(
-    page_title="AI Agents Ecosystem Analysis",
+    page_title="AI Agents Ecosystem Dashboard",
     layout="wide"
 )
 
-st.title("📊 AI 에이전트 일자리 생태계 연도·국가 분석")
+st.title("🌍 AI 에이전트 일자리 생태계 분석 대시보드")
+st.caption("연도별 변화 · 도메인 기반 국가 분석 · 정책/산업 해석 제공")
 
-st.markdown("""
-이 웹앱은 **AI 에이전트 관련 일자리·프로젝트·기술 기회 데이터**를 기반으로  
-연도별 변화와 **도메인 기반 국가 생태계 구조**를 분석합니다.
-""")
-
-# =========================
-# 2. 데이터 로딩
-# =========================
+# ---------------------------
+# 데이터 로딩
+# ---------------------------
 @st.cache_data
-def load_csv(file):
-    return pd.read_csv(file, encoding="cp949")
+def load_data(uploaded_file=None):
+    if uploaded_file:
+        return pd.read_csv(uploaded_file)
+    else:
+        return pd.read_csv("AI_Agents_Ecosystem_2026.csv")
 
-BASE_FILE = "AI_Agents_Ecosystem_2026.csv"
-df_list = []
-
-try:
-    base_df = load_csv(BASE_FILE)
-    df_list.append(base_df)
-except:
-    st.error("기본 데이터 파일을 불러오지 못했습니다.")
-
-uploaded_files = st.file_uploader(
-    "📂 동일한 형식의 CSV 파일 추가 업로드 (선택)",
-    type="csv",
-    accept_multiple_files=True
+uploaded_file = st.file_uploader(
+    "같은 형식의 CSV 파일을 업로드하면 자동으로 반영됩니다",
+    type="csv"
 )
 
-if uploaded_files:
-    for file in uploaded_files:
-        df_list.append(load_csv(file))
+df = load_data(uploaded_file)
 
-df = pd.concat(df_list, ignore_index=True)
+st.success(f"데이터 로딩 완료: {len(df)} rows")
 
-# =========================
-# 3. 도메인 → 국가 분류
-# =========================
-TLD_COUNTRY_MAP = {
-    "kr": "South Korea",
-    "jp": "Japan",
-    "cn": "China",
-    "tw": "Taiwan",
-    "sg": "Singapore",
-    "hk": "Hong Kong",
-    "de": "Germany",
-    "fr": "France",
-    "uk": "United Kingdom",
-    "gb": "United Kingdom",
-    "nl": "Netherlands",
-    "ca": "Canada",
-    "au": "Australia",
-    "in": "India",
-    "br": "Brazil"
-}
+# ---------------------------
+# 컬럼 자동 탐색
+# ---------------------------
+columns_lower = {c.lower(): c for c in df.columns}
 
-def extract_domain(url):
-    if pd.isna(url):
-        return None
-    try:
-        return urlparse(url).netloc.replace("www.", "").lower()
-    except:
-        return None
+year_col = columns_lower.get("year")
+domain_col = (
+    columns_lower.get("domain")
+    or columns_lower.get("url")
+    or columns_lower.get("website")
+)
 
+if not year_col or not domain_col:
+    st.error("❌ 연도(year) 또는 도메인(domain/url) 컬럼을 찾지 못했습니다.")
+    st.stop()
+
+# ---------------------------
+# 국가 추정 (도메인 기반)
+# ---------------------------
 def infer_country(domain):
-    if domain is None:
+    if pd.isna(domain):
         return "Unknown"
-    tld = domain.split(".")[-1]
-    if tld in TLD_COUNTRY_MAP:
-        return TLD_COUNTRY_MAP[tld]
-    if tld in ["com", "io", "ai", "org", "net"]:
-        return "Global"
-    return "Other"
+    match = re.search(r"\.([a-z]{2})$", domain.lower())
+    if match:
+        return match.group(1).upper()
+    return "Global"
 
-df["domain"] = df["Link"].apply(extract_domain)
-df["country"] = df["domain"].apply(infer_country)
+df["Country"] = df[domain_col].apply(infer_country)
 
-# =========================
-# 4. 연도 추출
-# =========================
-df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-df["Year"] = df["Date"].dt.year
-
-# =========================
-# 5. 연도 × 국가 집계
-# =========================
-year_country = (
-    df.groupby(["Year", "country"])
-      .size()
-      .reset_index(name="count")
+# ---------------------------
+# 연도별 집계
+# ---------------------------
+year_count = (
+    df.groupby(year_col)
+    .size()
+    .reset_index(name="Count")
+    .sort_values(year_col)
 )
 
-# =========================
-# 6. 그래프 ① 연도별 국가 분포
-# =========================
-st.subheader("📈 연도별 AI 에이전트 생태계 국가 분포")
+# ---------------------------
+# 연도별 글로벌 트렌드
+# ---------------------------
+st.subheader("📈 연도별 AI 에이전트 생태계 변화 (글로벌)")
 
-max_y = max(20, year_country["count"].max() + 1)
-
-fig1 = px.line(
-    year_country,
-    x="Year",
-    y="count",
-    color="country",
+fig_global = px.line(
+    year_count,
+    x=year_col,
+    y="Count",
     markers=True,
-    title="Yearly Distribution by Country (Domain-based)"
+    title="연도별 AI 에이전트 관련 생태계 규모 변화"
 )
 
-fig1.update_layout(
-    xaxis_title="Year",
-    yaxis_title="Number of Opportunities",
-    legend_title="Country",
-    yaxis=dict(range=[0, max_y], dtick=1)
+fig_global.update_yaxes(range=[0, 20])
+st.plotly_chart(fig_global, use_container_width=True)
+
+# ---------------------------
+# 국가별 연도 비교
+# ---------------------------
+st.subheader("🌐 국가별 AI 에이전트 생태계 변화")
+
+country_year = (
+    df.groupby([year_col, "Country"])
+    .size()
+    .reset_index(name="Count")
 )
 
-st.plotly_chart(fig1, use_container_width=True)
-
-# =========================
-# 7. 그래프 ② Global vs Country 비교
-# =========================
-st.subheader("🌍 Global vs 국가 기반 생태계 비교")
-
-df["ecosystem_type"] = df["country"].apply(
-    lambda x: "Global" if x == "Global" else "Country-based"
+selected_countries = st.multiselect(
+    "비교할 국가 선택 (도메인 기준)",
+    sorted(country_year["Country"].unique()),
+    default=["GLOBAL", "KR", "US"]
 )
 
-year_ecosystem = (
-    df.groupby(["Year", "ecosystem_type"])
-      .size()
-      .reset_index(name="count")
+filtered = country_year[country_year["Country"].isin(selected_countries)]
+
+fig_country = px.line(
+    filtered,
+    x=year_col,
+    y="Count",
+    color="Country",
+    markers=True,
+    title="국가별 연도 변화 비교"
 )
 
-fig2 = px.bar(
-    year_ecosystem,
-    x="Year",
-    y="count",
-    color="ecosystem_type",
-    barmode="stack",
-    title="Global vs Country-based AI Agent Ecosystem (Yearly)"
+fig_country.update_yaxes(range=[0, 20])
+st.plotly_chart(fig_country, use_container_width=True)
+
+# ---------------------------
+# 글로벌 vs 특정 국가 비교
+# ---------------------------
+st.subheader("🌍 글로벌 vs 특정 국가 비교")
+
+target_country = st.selectbox(
+    "비교할 국가 선택",
+    sorted(df["Country"].unique())
 )
 
-fig2.update_layout(
-    xaxis_title="Year",
-    yaxis_title="Number of Opportunities",
-    legend_title="Ecosystem Type"
+compare_df = country_year[
+    country_year["Country"].isin(["Global", target_country])
+]
+
+fig_compare = px.line(
+    compare_df,
+    x=year_col,
+    y="Count",
+    color="Country",
+    markers=True,
+    title=f"Global vs {target_country} AI 에이전트 생태계 비교"
 )
 
-st.plotly_chart(fig2, use_container_width=True)
+fig_compare.update_yaxes(range=[0, 20])
+st.plotly_chart(fig_compare, use_container_width=True)
 
-# =========================
-# 8. 해석 자동 생성
-# =========================
-st.subheader("🧠 분석 해석")
+# ---------------------------
+# 해석 섹션
+# ---------------------------
+st.divider()
+st.header("🧠 데이터 해석")
 
-latest_year = int(df["Year"].max())
-latest = df[df["Year"] == latest_year]
-
-global_count = (latest["ecosystem_type"] == "Global").sum()
-country_count = (latest["ecosystem_type"] == "Country-based").sum()
-total = global_count + country_count
-
-global_ratio = (global_count / total) * 100 if total > 0 else 0
-
-st.markdown(f"""
-### 🔎 {latest_year}년 기준 종합 해석
-
-- AI 에이전트 관련 기회의 **{global_ratio:.1f}%**가  
-  **글로벌 플랫폼·도메인 기반(Global)**에서 발생하고 있습니다.
-- 이는 AI 에이전트 일자리 생태계가  
-  **국가 단위 고용시장보다 글로벌 디지털 생태계 중심으로 구조 전환**되고 있음을 보여줍니다.
-- 국가 기반 기회는 여전히 존재하지만,  
-  글로벌 생태계가 **확산 속도와 접근성 측면에서 우위를 점하고 있음**을 시사합니다.
-""")
+st.subheader("① 정책·산업 보고서용 해석")
 
 st.markdown("""
-📌 **해석 유의사항**  
-본 분석은 고용 위치가 아닌,  
-AI 에이전트 기회가 생성·유통되는 **디지털 생태계의 기반 구조**를 추정한 결과입니다.
+- 연도별 데이터는 **AI 에이전트 관련 산업·일자리 생태계가 단기적으로 어떻게 확산 또는 정체되는지**를 보여준다.
+- 글로벌 트렌드는 기술 주도 산업의 성숙도 및 투자 집중 시점을 반영한다.
+- 국가별 차이는 **디지털 전환 정책, 스타트업 생태계, 규제 환경**의 영향을 간접적으로 시사한다.
+- 특정 국가가 글로벌 대비 완만한 증가를 보일 경우, 이는 **도입기 혹은 제도 정비 단계**로 해석 가능하다.
 """)
+
+st.subheader("② 산업 vs 교육·인력양성 시사점")
+
+st.markdown("""
+**[산업 측면]**
+- AI 에이전트 수요 증가는 자동화, 의사결정 보조, 운영 최적화 영역에서의 실질적 활용 확산을 의미한다.
+- 국가별 격차는 기업의 기술 채택 속도 및 산업 구조 차이를 반영한다.
+
+**[교육·인력양성 측면]**
+- AI 에이전트 생태계 성장은 단순 개발자가 아닌  
+  **기획자·운영자·윤리·정책 이해 인력** 수요 증가로 연결된다.
+- 연도별 완만한 증가 구간은 **커리큘럼 개편 및 재교육 정책 개입의 적기**로 해석할 수 있다.
+""")
+
+st.success("✅ 분석 및 해석이 포함된 대시보드 구성 완료")
