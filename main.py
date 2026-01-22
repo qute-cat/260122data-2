@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import chardet
 from io import BytesIO
 
 # -----------------------------
@@ -14,17 +13,22 @@ st.set_page_config(
 st.title("🤖 AI Agents Ecosystem 2026 데이터 탐색기")
 
 # -----------------------------
-# 2. CSV 로딩 함수 (인코딩 자동 감지)
+# 2. CSV 로딩 함수 (인코딩 순차 시도)
 # -----------------------------
 @st.cache_data
 def load_data(file):
-    raw_data = file.read()
-    detected = chardet.detect(raw_data)
-    encoding = detected["encoding"]
+    encodings = ["utf-8-sig", "utf-8", "cp949", "euc-kr"]
+    last_error = None
 
-    file.seek(0)
-    df = pd.read_csv(file, encoding=encoding)
-    return df, encoding
+    for enc in encodings:
+        try:
+            file.seek(0)
+            df = pd.read_csv(file, encoding=enc)
+            return df, enc
+        except Exception as e:
+            last_error = e
+
+    raise last_error
 
 # -----------------------------
 # 3. 파일 업로드
@@ -47,7 +51,7 @@ if uploaded_file:
         st.dataframe(df, use_container_width=True)
 
         # -----------------------------
-        # 5. 컬럼 선택 필터
+        # 5. 컬럼 기반 필터링
         # -----------------------------
         st.subheader("🔍 컬럼 기반 탐색")
 
@@ -72,11 +76,14 @@ if uploaded_file:
         st.dataframe(filtered_df, use_container_width=True)
 
         # -----------------------------
-        # 6. CSV 다운로드 (PDF 대신)
+        # 6. CSV 다운로드
         # -----------------------------
         st.subheader("⬇️ 데이터 다운로드")
 
-        csv_bytes = filtered_df.to_csv(index=False).encode("utf-8-sig")
+        csv_bytes = filtered_df.to_csv(
+            index=False,
+            encoding="utf-8-sig"
+        ).encode("utf-8-sig")
 
         st.download_button(
             label="필터링된 데이터 CSV 다운로드",
@@ -86,7 +93,7 @@ if uploaded_file:
         )
 
     except Exception as e:
-        st.error("파일을 처리하는 중 오류가 발생했습니다.")
+        st.error("CSV 파일을 불러오는 데 실패했습니다.")
         st.exception(e)
 
 else:
