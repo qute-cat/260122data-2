@@ -13,7 +13,7 @@ st.set_page_config(
 st.title("🤖 AI Agent Ecosystem: 유형별 빈도 & 트렌드 분석")
 
 # ---------------------------------
-# 1. 데이터 로딩 (로컬 CSV 고정)
+# 1. 데이터 로딩 (내장 CSV)
 # ---------------------------------
 @st.cache_data
 def load_data():
@@ -23,7 +23,7 @@ def load_data():
             return pd.read_csv("AI_Agents_Ecosystem_2026.csv", encoding=enc), enc
         except:
             pass
-    raise ValueError("CSV 파일 인코딩을 확인해주세요.")
+    raise ValueError("CSV 인코딩을 확인해주세요.")
 
 df, encoding = load_data()
 st.success(f"기본 데이터 로딩 완료 (인코딩: {encoding})")
@@ -40,6 +40,7 @@ country_col = st.selectbox("국가 컬럼 선택 (선택)", ["없음"] + columns
 # ---------------------------------
 # 3. 데이터 정제
 # ---------------------------------
+df = df.copy()
 df[year_col] = df[year_col].astype(str)
 
 if country_col != "없음":
@@ -56,21 +57,17 @@ if country_col != "없음":
 st.subheader("① AI Agent 유형별 전체 빈도")
 
 agent_count = (
-    df.groupby(agent_col, as_index=False)
-    .size()
-    .rename(columns={"size": "빈도"})
+    df[agent_col]
+    .value_counts()
+    .reset_index(name="빈도")
 )
+agent_count.columns = ["AI Agent 유형", "빈도"]
 
 fig_freq = px.bar(
     agent_count,
-    x=agent_col,
+    x="AI Agent 유형",
     y="빈도",
     text="빈도"
-)
-fig_freq.update_layout(
-    xaxis_title="AI Agent 유형",
-    yaxis_title="등장 빈도",
-    yaxis_range=[0, agent_count["빈도"].max() * 1.2]
 )
 
 st.plotly_chart(fig_freq, use_container_width=True)
@@ -81,10 +78,9 @@ st.plotly_chart(fig_freq, use_container_width=True)
 st.subheader("② 연도별 AI Agent 유형 트렌드")
 
 trend_df = (
-    df
-    .groupby([year_col, agent_col], as_index=False)
-    .size()
-    .rename(columns={"size": "건수"})
+    df[[year_col, agent_col]]
+    .value_counts()
+    .reset_index(name="건수")
 )
 
 fig_trend = px.line(
@@ -93,11 +89,6 @@ fig_trend = px.line(
     y="건수",
     color=agent_col,
     markers=True
-)
-fig_trend.update_layout(
-    xaxis_title="연도",
-    yaxis_title="건수",
-    yaxis_range=[0, trend_df["건수"].max() * 1.2]
 )
 
 st.plotly_chart(fig_trend, use_container_width=True)
@@ -114,10 +105,9 @@ if country_col != "없음":
     )
 
     compare_df = (
-        df[df[year_col] == compare_year]
-        .groupby([country_col, agent_col], as_index=False)
-        .size()
-        .rename(columns={"size": "건수"})
+        df[df[year_col] == compare_year][[country_col, agent_col]]
+        .value_counts()
+        .reset_index(name="건수")
     )
 
     fig_country = px.bar(
@@ -137,12 +127,12 @@ st.subheader("📘 정책·산업 보고서용 해석 가이드")
 
 st.markdown("""
 ### 🔹 산업적 시사점
-- **등장 빈도가 높은 AI Agent 유형**은 이미 시장성과 기술 성숙도가 확보된 영역
-- 연도별 증가 추세는 **산업 내 투자 집중과 비즈니스 모델 확산의 신호**
-- 국가별 편중은 **국가 주도 AI 전략 산업** 가능성을 시사
+- AI Agent 유형 빈도는 **시장 성숙도 및 수요 검증 지표**
+- 연도별 증가 유형은 **투자·상용화 가속 구간**
+- 국가별 편차는 **국가 전략 산업 및 정책 개입 효과**를 반영
 
 ### 🔹 교육·인력양성 시사점
-- 성장 중인 Agent 유형은 **신규 직무·핵심 역량 수요 증가**
-- 정체/감소 유형은 **전환 교육(reskilling) 필요 영역**
-- 국가별 차이는 **교육 정책·인재 양성 체계 격차**를 반영
+- 성장 유형 → **신규 직무·역량 수요 급증**
+- 정체 유형 → **전환 교육(reskilling) 필요**
+- 국가별 차이 → **교육 정책 및 인재 파이프라인 격차**
 """)
