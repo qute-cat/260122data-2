@@ -1,100 +1,160 @@
 import streamlit as st
 import pandas as pd
-from io import BytesIO
+import plotly.express as px
 
-# -----------------------------
-# 1. 페이지 설정
-# -----------------------------
+# ---------------------------------
+# 페이지 설정
+# ---------------------------------
 st.set_page_config(
-    page_title="AI Agents Ecosystem 2026",
+    page_title="AI Agent Ecosystem Analyzer",
     layout="wide"
 )
 
-st.title("🤖 AI Agents Ecosystem 2026 데이터 탐색기")
+st.title("🤖 AI Agent Ecosystem: 유형별 빈도 & 트렌드 분석")
 
-# -----------------------------
-# 2. CSV 로딩 함수 (인코딩 순차 시도)
-# -----------------------------
+# ---------------------------------
+# 데이터 로딩 (인코딩 순차 시도)
+# ---------------------------------
 @st.cache_data
 def load_data(file):
     encodings = ["utf-8-sig", "utf-8", "cp949", "euc-kr"]
-    last_error = None
-
     for enc in encodings:
         try:
             file.seek(0)
-            df = pd.read_csv(file, encoding=enc)
-            return df, enc
-        except Exception as e:
-            last_error = e
+            return pd.read_csv(file, encoding=enc), enc
+        except:
+            pass
+    raise ValueError("지원하지 않는 인코딩입니다.")
 
-    raise last_error
+uploaded_file = st.file_uploader("CSV 파일 업로드", type=["csv"])
 
-# -----------------------------
-# 3. 파일 업로드
-# -----------------------------
-uploaded_file = st.file_uploader(
-    "CSV 파일을 업로드하세요",
-    type=["csv"]
+if not uploaded_file:
+    st.info("CSV 파일을 업로드해주세요.")
+    st.stop()
+
+df, encoding = load_data(uploaded_file)
+st.success(f"데이터 로딩 완료 (인코딩: {encoding})")
+
+# ---------------------------------
+# 컬럼 자동 탐색
+# ---------------------------------
+columns = df.columns.tolist()
+
+year_col = st.selectbox("연도 컬럼 선택", columns)
+agent_col = st.selectbox("AI Agent 유형 컬럼 선택", columns)
+country_col = st.selectbox("국가 컬럼 선택 (선택)", ["없음"] + columns)
+
+# ---------------------------------
+# 데이터 정제
+# ---------------------------------
+df[year_col] = df[year_col].astype(str)
+
+if country_col != "없음":
+    selected_countries = st.multiselect(
+        "분석할 국가 선택",
+        sorted(df[country_col].dropna().unique()),
+        default=sorted(df[country_col].dropna().unique())
+    )
+    df = df[df[country_col].isin(selected_countries)]
+
+# ---------------------------------
+# 1️⃣ AI Agent 유형별 전체 빈도
+# ---------------------------------
+st.subheader("① AI Agent 유형별 전체 빈도")
+
+agent_count = (
+    df[agent_col]
+    .value_counts()
+    .reset_index()
+)
+agent_count.columns = ["AI Agent 유형", "빈도"]
+
+fig_freq = px.bar(
+    agent_count,
+    x="AI Agent 유형",
+    y="빈도",
+    text="빈도"
+)
+fig_freq.update_layout(
+    xaxis_title="AI Agent 유형",
+    yaxis_title="등장 빈도",
+    yaxis_range=[0, agent_count["빈도"].max() * 1.2]
 )
 
-if uploaded_file:
-    try:
-        df, encoding = load_data(uploaded_file)
+st.plotly_chart(fig_freq, use_container_width=True)
 
-        st.success(f"파일 로딩 성공! (인코딩: {encoding})")
+# ---------------------------------
+# 2️⃣ 연도별 AI Agent 유형 트렌드
+# ---------------------------------
+st.subheader("② 연도별 AI Agent 유형 트렌드")
 
-        # -----------------------------
-        # 4. 데이터 미리보기
-        # -----------------------------
-        st.subheader("📄 데이터 미리보기")
-        st.dataframe(df, use_container_width=True)
+trend_df = (
+    df
+    .groupby([year_col, agent_col])
+    .size()
+    .reset_index(name="건수")
+)
 
-        # -----------------------------
-        # 5. 컬럼 기반 필터링
-        # -----------------------------
-        st.subheader("🔍 컬럼 기반 탐색")
+fig_trend = px.line(
+    trend_df,
+    x=year_col,
+    y="건수",
+    color=agent_col,
+    markers=True
+)
+fig_trend.update_layout(
+    xaxis_title="연도",
+    yaxis_title="건수",
+    yaxis_range=[0, trend_df["건수"].max() * 1.2]
+)
 
-        selected_column = st.selectbox(
-            "기준 컬럼 선택",
-            df.columns
-        )
+st.plotly_chart(fig_trend, use_container_width=True)
 
-        unique_values = df[selected_column].dropna().unique()
+# ---------------------------------
+# 3️⃣ 글로벌 vs 국가 비교 (선택 시)
+# ---------------------------------
+if country_col != "없음":
+    st.subheader("③ 글로벌 vs 국가별 AI Agent 유형 비교")
 
-        selected_values = st.multiselect(
-            "값 선택",
-            unique_values
-        )
+    compare_year = st.selectbox(
+        "비교 연도 선택",
+        sorted(df[year_col].unique())
+    )
 
-        if selected_values:
-            filtered_df = df[df[selected_column].isin(selected_values)]
-        else:
-            filtered_df = df
+    compare_df = (
+        df[df[year_col] == compare_year]
+        .groupby([country_col, agent_col])
+        .size()
+        .reset_index(name="건수")
+    )
 
-        st.write(f"선택된 데이터 수: {len(filtered_df)}")
-        st.dataframe(filtered_df, use_container_width=True)
+    fig_country = px.bar(
+        compare_df,
+        x=agent_col,
+        y="건수",
+        color=country_col,
+        barmode="group"
+    )
+    fig_country.update_layout(
+        xaxis_title="AI Agent 유형",
+        yaxis_title="건수"
+    )
 
-        # -----------------------------
-        # 6. CSV 다운로드
-        # -----------------------------
-        st.subheader("⬇️ 데이터 다운로드")
+    st.plotly_chart(fig_country, use_container_width=True)
 
-        csv_bytes = filtered_df.to_csv(
-            index=False,
-            encoding="utf-8-sig"
-        ).encode("utf-8-sig")
+# ---------------------------------
+# 4️⃣ 정책·산업 보고서용 해석
+# ---------------------------------
+st.subheader("📘 정책·산업 보고서용 해석 가이드")
 
-        st.download_button(
-            label="필터링된 데이터 CSV 다운로드",
-            data=csv_bytes,
-            file_name="filtered_ai_agents_ecosystem.csv",
-            mime="text/csv"
-        )
+st.markdown("""
+### 🔹 산업적 시사점
+- **빈도가 높은 AI Agent 유형**은 이미 상용화·시장 수요가 검증된 영역으로 해석 가능
+- 연도별 증가 추세는 **투자 집중 및 산업 구조 변화의 신호**
+- 특정 국가에서만 급증하는 유형은 **국가 주도 전략 산업**일 가능성
 
-    except Exception as e:
-        st.error("CSV 파일을 불러오는 데 실패했습니다.")
-        st.exception(e)
-
-else:
-    st.info("왼쪽에서 CSV 파일을 업로드하세요.")
+### 🔹 교육·인력양성 시사점
+- 빠르게 성장하는 Agent 유형은 **신규 직무·역량 수요 증가**
+- 정체·감소 유형은 **재교육(reskilling) 필요 영역**
+- 국가별 차이는 **교육과정·인력정책 격차**를 반영
+""")
