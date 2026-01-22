@@ -1,176 +1,175 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import re
 
-# ---------------------------
-# 기본 설정
-# ---------------------------
 st.set_page_config(
-    page_title="AI Agents Ecosystem Dashboard",
+    page_title="AI Agents Ecosystem Analysis",
     layout="wide"
 )
 
-st.title("🌍 AI 에이전트 일자리 생태계 분석 대시보드")
-st.caption("연도별 변화 · 도메인 기반 국가 분석 · 정책/산업 해석 제공")
+st.title("AI 에이전트 생태계 분석 대시보드")
+st.caption("산업군 · 역할 유형 · 글로벌 vs 국가 기반 구조 분석")
 
-# ---------------------------
-# 데이터 로딩
-# ---------------------------
+# =========================
+# 1. 데이터 로딩 (인코딩 안전)
+# =========================
+
 @st.cache_data
 def load_data(uploaded_file=None):
-    if uploaded_file:
-        return pd.read_csv(uploaded_file)
-    else:
-        return pd.read_csv("AI_Agents_Ecosystem_2026.csv")
+    try:
+        if uploaded_file is not None:
+            try:
+                return pd.read_csv(uploaded_file, encoding="utf-8")
+            except UnicodeDecodeError:
+                return pd.read_csv(uploaded_file, encoding="cp949")
+        else:
+            try:
+                return pd.read_csv("AI_Agents_Ecosystem_2026.csv", encoding="utf-8")
+            except UnicodeDecodeError:
+                return pd.read_csv("AI_Agents_Ecosystem_2026.csv", encoding="cp949")
+    except Exception as e:
+        st.error(f"데이터 로딩 실패: {e}")
+        return None
+
 
 uploaded_file = st.file_uploader(
-    "같은 형식의 CSV 파일을 업로드하면 자동으로 반영됩니다",
-    type="csv"
+    "같은 형식의 CSV 파일 업로드",
+    type=["csv"]
 )
 
 df = load_data(uploaded_file)
 
-st.success(f"데이터 로딩 완료: {len(df)} rows")
-
-# ---------------------------
-# 컬럼 자동 탐색
-# ---------------------------
-columns_lower = {c.lower(): c for c in df.columns}
-
-year_col = columns_lower.get("year")
-domain_col = (
-    columns_lower.get("domain")
-    or columns_lower.get("url")
-    or columns_lower.get("website")
-)
-
-if not year_col or not domain_col:
-    st.error("❌ 연도(year) 또는 도메인(domain/url) 컬럼을 찾지 못했습니다.")
+if df is None:
     st.stop()
 
-# ---------------------------
-# 국가 추정 (도메인 기반)
-# ---------------------------
-def infer_country(domain):
-    if pd.isna(domain):
+st.success(f"데이터 로딩 완료: {len(df):,}건")
+
+# =========================
+# 2. 기본 컬럼 확인
+# =========================
+
+text_columns = df.select_dtypes(include="object").columns.tolist()
+
+if not text_columns:
+    st.error("텍스트 기반 분석을 위한 컬럼이 없습니다.")
+    st.stop()
+
+text_col = text_columns[0]
+
+st.caption(f"분석 기준 텍스트 컬럼: `{text_col}`")
+
+# =========================
+# 3. 산업군 태깅
+# =========================
+
+def tag_industry(text):
+    if pd.isna(text):
         return "Unknown"
-    match = re.search(r"\.([a-z]{2})$", domain.lower())
-    if match:
-        return match.group(1).upper()
-    return "Global"
+    t = text.lower()
+    if any(k in t for k in ["edu", "school", "learn", "course", "university"]):
+        return "Education / HR"
+    if any(k in t for k in ["health", "medical", "bio", "clinic"]):
+        return "Healthcare"
+    if any(k in t for k in ["bank", "finance", "fintech", "insurance"]):
+        return "Finance"
+    if any(k in t for k in ["gov", "public", "policy", "ministry"]):
+        return "Public / Gov"
+    if any(k in t for k in ["media", "content", "creative", "design"]):
+        return "Media / Creative"
+    if any(k in t for k in ["enterprise", "business", "b2b", "workflow"]):
+        return "Enterprise / B2B"
+    if any(k in t for k in ["ai", "platform", "software", "cloud", "saas"]):
+        return "Tech / Platform"
+    return "Unknown"
 
-df["Country"] = df[domain_col].apply(infer_country)
+df["industry_tag"] = df[text_col].apply(tag_industry)
 
-# ---------------------------
-# 연도별 집계
-# ---------------------------
-year_count = (
-    df.groupby(year_col)
+# =========================
+# 4. AI 에이전트 역할 유형 태깅
+# =========================
+
+def tag_agent_role(text):
+    if pd.isna(text):
+        return "Unknown"
+    t = text.lower()
+    if any(k in t for k in ["decision", "recommend", "insight", "strategy"]):
+        return "Decision Support Agent"
+    if any(k in t for k in ["automate", "workflow", "execute", "task"]):
+        return "Task Automation Agent"
+    if any(k in t for k in ["plan", "orchestrate", "manage", "coordinate"]):
+        return "Planning / Orchestration Agent"
+    if any(k in t for k in ["assistant", "chat", "copilot", "support"]):
+        return "Interaction / Assistant Agent"
+    if any(k in t for k in ["create", "generate", "design", "content"]):
+        return "Creative Agent"
+    if any(k in t for k in ["monitor", "analyze", "detect", "evaluate"]):
+        return "Monitoring / Analysis Agent"
+    if any(k in t for k in ["learn", "coach", "train", "mentor"]):
+        return "Learning / Coaching Agent"
+    return "Unknown"
+
+df["agent_role"] = df[text_col].apply(tag_agent_role)
+
+# =========================
+# 5. 산업군 × 역할 유형 매트릭스
+# =========================
+
+st.subheader("산업군 × AI 에이전트 역할 유형 분포")
+
+matrix_df = (
+    df
+    .groupby(["industry_tag", "agent_role"])
     .size()
-    .reset_index(name="Count")
-    .sort_values(year_col)
+    .reset_index(name="count")
 )
 
-# ---------------------------
-# 연도별 글로벌 트렌드
-# ---------------------------
-st.subheader("📈 연도별 AI 에이전트 생태계 변화 (글로벌)")
+heatmap_df = matrix_df.pivot(
+    index="industry_tag",
+    columns="agent_role",
+    values="count"
+).fillna(0)
 
-fig_global = px.line(
-    year_count,
-    x=year_col,
-    y="Count",
-    markers=True,
-    title="연도별 AI 에이전트 관련 생태계 규모 변화"
+fig_matrix = px.imshow(
+    heatmap_df,
+    text_auto=True,
+    aspect="auto",
+    color_continuous_scale="Blues",
+    labels=dict(
+        x="AI 에이전트 역할 유형",
+        y="산업군",
+        color="기회 수"
+    ),
+    title="산업군 × AI 에이전트 역할 유형 매트릭스"
 )
 
-fig_global.update_yaxes(range=[0, 20])
-st.plotly_chart(fig_global, use_container_width=True)
-
-# ---------------------------
-# 국가별 연도 비교
-# ---------------------------
-st.subheader("🌐 국가별 AI 에이전트 생태계 변화")
-
-country_year = (
-    df.groupby([year_col, "Country"])
-    .size()
-    .reset_index(name="Count")
+fig_matrix.update_layout(
+    height=500,
+    xaxis_title="AI 에이전트 역할 유형",
+    yaxis_title="산업군"
 )
 
-selected_countries = st.multiselect(
-    "비교할 국가 선택 (도메인 기준)",
-    sorted(country_year["Country"].unique()),
-    default=["GLOBAL", "KR", "US"]
-)
+st.plotly_chart(fig_matrix, use_container_width=True)
 
-filtered = country_year[country_year["Country"].isin(selected_countries)]
+# =========================
+# 6. 정책·산업 해석 텍스트
+# =========================
 
-fig_country = px.line(
-    filtered,
-    x=year_col,
-    y="Count",
-    color="Country",
-    markers=True,
-    title="국가별 연도 변화 비교"
-)
-
-fig_country.update_yaxes(range=[0, 20])
-st.plotly_chart(fig_country, use_container_width=True)
-
-# ---------------------------
-# 글로벌 vs 특정 국가 비교
-# ---------------------------
-st.subheader("🌍 글로벌 vs 특정 국가 비교")
-
-target_country = st.selectbox(
-    "비교할 국가 선택",
-    sorted(df["Country"].unique())
-)
-
-compare_df = country_year[
-    country_year["Country"].isin(["Global", target_country])
-]
-
-fig_compare = px.line(
-    compare_df,
-    x=year_col,
-    y="Count",
-    color="Country",
-    markers=True,
-    title=f"Global vs {target_country} AI 에이전트 생태계 비교"
-)
-
-fig_compare.update_yaxes(range=[0, 20])
-st.plotly_chart(fig_compare, use_container_width=True)
-
-# ---------------------------
-# 해석 섹션
-# ---------------------------
-st.divider()
-st.header("🧠 데이터 해석")
-
-st.subheader("① 정책·산업 보고서용 해석")
+st.subheader("정책·산업 해석 요약")
 
 st.markdown("""
-- 연도별 데이터는 **AI 에이전트 관련 산업·일자리 생태계가 단기적으로 어떻게 확산 또는 정체되는지**를 보여준다.
-- 글로벌 트렌드는 기술 주도 산업의 성숙도 및 투자 집중 시점을 반영한다.
-- 국가별 차이는 **디지털 전환 정책, 스타트업 생태계, 규제 환경**의 영향을 간접적으로 시사한다.
-- 특정 국가가 글로벌 대비 완만한 증가를 보일 경우, 이는 **도입기 혹은 제도 정비 단계**로 해석 가능하다.
+**해석 요약**
+
+- AI 에이전트는 산업별로 단일한 역할이 아니라,  
+  산업 특성에 따라 서로 다른 역할 조합으로 확산되고 있음
+- 기술·플랫폼 및 B2B 산업에서는  
+  업무 자동화 및 의사결정 보조 역할이 핵심 축으로 나타남
+- 이는 AI 에이전트 인력 정책이  
+  단순 개발자 양성을 넘어 역할 기반 역량 체계로 전환되어야 함을 시사함
+
+**교육·인력양성 시사점**
+
+- 코딩 중심 교육 → 기획·운영·조율·해석 역량 중심 교육 필요
+- AI 에이전트를 ‘도구’가 아닌 ‘업무 수행 주체’로 이해하는 인재 양성 필요
 """)
 
-st.subheader("② 산업 vs 교육·인력양성 시사점")
-
-st.markdown("""
-**[산업 측면]**
-- AI 에이전트 수요 증가는 자동화, 의사결정 보조, 운영 최적화 영역에서의 실질적 활용 확산을 의미한다.
-- 국가별 격차는 기업의 기술 채택 속도 및 산업 구조 차이를 반영한다.
-
-**[교육·인력양성 측면]**
-- AI 에이전트 생태계 성장은 단순 개발자가 아닌  
-  **기획자·운영자·윤리·정책 이해 인력** 수요 증가로 연결된다.
-- 연도별 완만한 증가 구간은 **커리큘럼 개편 및 재교육 정책 개입의 적기**로 해석할 수 있다.
-""")
-
-st.success("✅ 분석 및 해석이 포함된 대시보드 구성 완료")
+st.caption("© AI Agents Ecosystem Analysis Dashboard")
