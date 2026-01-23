@@ -104,6 +104,9 @@ fig2 = px.line(
     title="연도별 AI Agent 유형 변화",
     range_y=[0, 20]
 )
+
+st.plotly_chart(fig2, use_container_width=True)
+
 st.header("④ AI가 설명해주는 그래프 해석")
 
 # OpenAI 클라이언트
@@ -138,7 +141,7 @@ if st.button("🤖 AI 해석 생성"):
     st.success("AI 해석 결과")
     st.write(response.choices[0].message.content)
 
-st.plotly_chart(fig2, use_container_width=True)
+
 
 # -------------------------------------------------
 # 6. 트렌드 해석
