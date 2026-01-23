@@ -1,34 +1,33 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-from collections import Counter
 import re
+from collections import Counter
 
-# -----------------------------
-# 기본 설정
-# -----------------------------
+# =============================
+# 페이지 설정
+# =============================
 st.set_page_config(
     page_title="AI Agent Evolution",
     layout="wide"
 )
 
 st.title("🤖 AI Agent는 어떻게 진화하고 있을까?")
+st.caption("AI Agent 생태계 데이터 + 학생 질문 기반 진로 탐색")
 
-# -----------------------------
-# Session State 초기화 (KeyError 방지)
-# -----------------------------
-if "questions" not in st.session_state:
-    st.session_state.questions = []
+# =============================
+# OpenAI API (안전 처리)
+# =============================
+try:
+    from openai import OpenAI
+    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+    openai_ready = True
+except Exception:
+    openai_ready = False
 
-if "votes" not in st.session_state:
-    st.session_state.votes = {}
-
-if "selected_question" not in st.session_state:
-    st.session_state.selected_question = None
-
-# -----------------------------
-# 데이터 로드
-# -----------------------------
+# =============================
+# 데이터 로드 (CSV)
+# =============================
 @st.cache_data
 def load_data():
     try:
@@ -42,27 +41,18 @@ def load_data():
 
 df = load_data()
 
-# -----------------------------
-# A. 연도별 AI Agent 트렌드
-# -----------------------------
+# =============================
+# A. 연도별 트렌드
+# =============================
+st.subheader("A. 연도별 AI Agent 트렌드 변화")
+
 yearly_trend = (
-    df.dropna(subset=["Year"])
-    .groupby("Year")
+    df.groupby("Year")
     .size()
     .reset_index(name="Count")
 )
 
-all_years = pd.DataFrame({
-    "Year": range(int(yearly_trend["Year"].min()), int(yearly_trend["Year"].max()) + 1)
-})
-
-yearly_trend = all_years.merge(
-    yearly_trend, on="Year", how="left"
-).fillna(0)
-
-st.subheader("📈 연도별 AI Agent 트렌드 변화")
-
-chart = (
+chart_a = (
     alt.Chart(yearly_trend)
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
@@ -70,107 +60,221 @@ chart = (
         y=alt.Y("Count:Q", title="사례 수"),
         tooltip=["Year", "Count"]
     )
-    .properties(height=380)
+    .properties(height=350)
 )
 
-st.altair_chart(chart, use_container_width=True)
-
-st.caption(
-    "AI Agent 논의는 자동화 도구 → 협업 파트너 → 자율적 실행 주체로 진화하고 있습니다."
-)
-
-# -----------------------------
-# B. AI Agent 역할 진화 설명
-# -----------------------------
-st.subheader("🧠 AI Agent 역할의 진화")
+st.altair_chart(chart_a, use_container_width=True)
 
 st.markdown("""
-AI Agent는 한 번에 완성된 존재가 아니라 **역할이 단계적으로 확장**되어 왔습니다.
-
-**① 도구형 Agent**  
-- 명령 수행 중심 (검색, 요약)  
-- 인간 지시 없이는 행동 불가  
-
-**② 보조형 Agent**  
-- 추천, 초안, 비교 제안  
-- 인간의 판단을 보조  
-
-**③ 협업형 Agent**  
-- 인간과 목표 공유  
-- 여러 Agent 간 역할 분담  
-
-**④ 자율형 Agent**  
-- 목표 설정 → 실행 → 평가  
-- 서비스·조직 단위로 작동
+🧠 **의미**  
+AI Agent는 최근 몇 년 사이  
+**기술 실험 → 실제 활용 → 생태계 논의** 단계로 이동하고 있습니다.
 """)
 
+st.divider()
+
+# =============================
+# B. AI Agent 역할 진화
+# =============================
+st.subheader("B. AI Agent의 역할은 어떻게 달라졌을까?")
+
+st.markdown("""
+AI Agent는 단순한 프로그램이 아니라  
+**‘무슨 역할을 맡는 존재인가’**로 이해할 수 있습니다.
+""")
+
+# 역할 분류 함수
+def classify_role(text):
+    text = str(text).lower()
+    if re.search(r"multi|ecosystem|collaboration|swarm", text):
+        return "4️⃣ Multi-Agent System"
+    if re.search(r"autonomous|self|decision|agentic", text):
+        return "3️⃣ Autonomous Agent"
+    if re.search(r"chat|assistant|conversation|dialog", text):
+        return "2️⃣ Conversational Agent"
+    return "1️⃣ Task / Rule Agent"
+
+df["Role_Stage"] = df["Description"].apply(classify_role)
+
+role_trend = (
+    df.groupby(["Year", "Role_Stage"])
+    .size()
+    .reset_index(name="Count")
+)
+
+chart_b = (
+    alt.Chart(role_trend)
+    .mark_bar()
+    .encode(
+        x=alt.X("Year:O", title="연도"),
+        y=alt.Y("Count:Q", title="사례 수"),
+        color=alt.Color(
+            "Role_Stage:N",
+            title="AI Agent 역할 단계",
+            scale=alt.Scale(domain=[
+                "1️⃣ Task / Rule Agent",
+                "2️⃣ Conversational Agent",
+                "3️⃣ Autonomous Agent",
+                "4️⃣ Multi-Agent System"
+            ])
+        ),
+        tooltip=["Year", "Role_Stage", "Count"]
+    )
+    .properties(height=420)
+)
+
+st.altair_chart(chart_b, use_container_width=True)
+
+st.markdown("""
+### 🔍 역할 단계 해설 (학생용)
+
+- **1️⃣ Task Agent**: 시키는 일만 정확히 수행  
+- **2️⃣ Conversational Agent**: 대화하며 돕는 존재  
+- **3️⃣ Autonomous Agent**: 스스로 판단하고 행동  
+- **4️⃣ Multi-Agent System**: AI들끼리 협력하는 구조
+
+👉 AI는 **도구 → 동료 → 시스템 구성원**으로 진화 중
+""")
+
+st.divider()
+
+# =============================
+# C. 전공·진로 연결
+# =============================
+st.subheader("C. AI 시대, 사람에게 더 중요해지는 역할")
+
+role_map = pd.DataFrame({
+    "AI Agent 단계": [
+        "1️⃣ Task Agent",
+        "2️⃣ Conversational Agent",
+        "3️⃣ Autonomous Agent",
+        "4️⃣ Multi-Agent System"
+    ],
+    "AI의 역할": [
+        "정해진 작업 수행",
+        "대화·응답·지원",
+        "판단·행동",
+        "협력·조정"
+    ],
+    "사람의 핵심 역량": [
+        "문제 정의",
+        "공감·소통",
+        "판단 기준·윤리",
+        "기획·리더십"
+    ],
+    "연결 전공 예시": [
+        "산업공학, 행정",
+        "심리, 교육, UX",
+        "법, 철학, 데이터",
+        "경영, 정책, 융합"
+    ]
+})
+
+st.dataframe(role_map, use_container_width=True)
+
+st.success("""
+🎯 핵심 메시지  
+AI 시대 전공 선택은  
+**AI보다 잘하는 게 아니라  
+AI가 못하는 역할을 고르는 것**
+""")
+
+st.divider()
+
+# =============================
+# D. 학생 질문 수집 + 분석
+# =============================
+st.subheader("D. 학생 질문 (익명 참여)")
+
+if "questions" not in st.session_state:
+    st.session_state["questions"] = []
+
+question = st.text_input("✏️ 궁금한 점을 적어주세요")
+
+if st.button("질문 제출"):
+    if question.strip():
+        st.session_state["questions"].append(question.strip())
+        st.success("질문이 저장되었습니다!")
+    else:
+        st.warning("질문을 입력해주세요.")
+
 # -----------------------------
-# C. 질문 입력 & 투표
+# 질문 분석
 # -----------------------------
-st.subheader("❓ 지금 떠오른 질문을 남겨보세요")
+if st.session_state["questions"]:
+    st.subheader("📊 질문 키워드 한눈에 보기")
 
-new_q = st.text_input("질문을 입력하세요 (짧게)")
-
-if st.button("질문 등록"):
-    if new_q.strip():
-        st.session_state.questions.append(new_q.strip())
-        st.session_state.votes[new_q.strip()] = 0
-
-if st.session_state.questions:
-    st.markdown("### 📊 질문 투표")
-    for q in st.session_state.questions:
-        col1, col2 = st.columns([5, 1])
-        col1.write(q)
-        if col2.button("👍", key=q):
-            st.session_state.votes[q] += 1
-            st.session_state.selected_question = q
-
-# -----------------------------
-# D. 키워드 빈도 시각화 (워드클라우드 대체)
-# -----------------------------
-st.subheader("☁️ 질문 핵심 키워드")
-
-if st.session_state.questions:
-    stopwords = {"AI", "에이전트", "어떻게", "왜", "무엇", "할까", "인가"}
     words = []
+    for q in st.session_state["questions"]:
+        words += re.findall(r"[가-힣]{2,}", q)
 
-    for q in st.session_state.questions:
-        cleaned = re.sub(r"[^\w\s]", "", q)
-        for w in cleaned.split():
-            if len(w) > 1 and w not in stopwords:
-                words.append(w)
+    freq = Counter(words).most_common(15)
+    wc_df = pd.DataFrame(freq, columns=["키워드", "빈도"])
 
-    counter = Counter(words)
-    keyword_df = pd.DataFrame(counter.most_common(15), columns=["Keyword", "Count"])
-
-    keyword_chart = (
-        alt.Chart(keyword_df)
-        .mark_bar()
+    chart_wc = (
+        alt.Chart(wc_df)
+        .mark_circle()
         .encode(
-            x=alt.X("Count:Q", title="빈도"),
-            y=alt.Y("Keyword:N", sort="-x", title="키워드"),
-            tooltip=["Keyword", "Count"]
+            x="키워드:N",
+            y="빈도:Q",
+            size="빈도:Q",
+            tooltip=["키워드", "빈도"]
         )
-        .properties(height=400)
+        .properties(height=300)
     )
 
-    st.altair_chart(keyword_chart, use_container_width=True)
+    st.altair_chart(chart_wc, use_container_width=True)
 
-# -----------------------------
-# D-1. 선택 질문 AI 해설
-# -----------------------------
-if st.session_state.selected_question:
-    st.subheader("🤖 AI의 해설")
+    st.divider()
 
-    st.markdown(f"""
-**선택된 질문**  
-> *{st.session_state.selected_question}*
+    # =============================
+    # E. AI 즉석 답변
+    # =============================
+    st.subheader("🤖 AI가 답해줍니다")
 
-**AI 해설**  
-이 질문은 AI Agent의 진화가  
-단순한 기술 문제가 아니라 **인간의 선택과 역할 재정의 문제**임을 보여줍니다.
+    selected_q = st.selectbox(
+        "AI에게 답변을 요청할 질문을 선택하세요",
+        st.session_state["questions"]
+    )
 
-앞으로 AI는  
-👉 *결정을 대신하는 존재*가 아니라  
-👉 *더 나은 결정을 가능하게 하는 파트너*로 발전할 가능성이 큽니다.
+    if st.button("AI 답변 보기"):
+        if openai_ready:
+            with st.spinner("AI가 답변을 생성 중입니다..."):
+                try:
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "너는 고등학생을 위한 진로 특강 AI다. 어렵지 않게 설명해라."
+                            },
+                            {
+                                "role": "user",
+                                "content": selected_q
+                            }
+                        ],
+                        temperature=0.6,
+                        max_tokens=200
+                    )
+                    st.markdown("### 💡 AI의 답변")
+                    st.write(response.choices[0].message.content)
+                except Exception:
+                    st.error("AI 응답을 불러오지 못했습니다.")
+        else:
+            st.warning("OpenAI API 설정이 되어 있지 않습니다.")
+
+else:
+    st.info("아직 수집된 질문이 없습니다.")
+
+# =============================
+# 마무리
+# =============================
+st.success("""
+🎓 오늘의 결론
+
+AI는 점점 똑똑해지지만  
+**진로를 선택하는 건 여전히 사람의 몫**입니다.
+
+AI를 두려워하기보다  
+👉 **AI와 어떤 관계를 맺을지** 고민해 보세요.
 """)
