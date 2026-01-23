@@ -1,32 +1,36 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-import re
 from collections import Counter
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+import os
 
-# =============================
-# 페이지 설정
-# =============================
+# -----------------------------
+# 기본 설정
+# -----------------------------
 st.set_page_config(
     page_title="AI Agent Evolution",
     layout="wide"
 )
 
-# =============================
-# session_state 초기화
-# =============================
+st.title("🤖 AI Agent는 어떻게 진화하고 있을까?")
+
+# -----------------------------
+# Session State 초기화 (KeyError 방지)
+# -----------------------------
 if "questions" not in st.session_state:
     st.session_state.questions = []
 
-# =============================
-# 타이틀
-# =============================
-st.title("🤖 AI Agent는 어떻게 진화하고 있을까?")
-st.caption("AI Agent 생태계 데이터 기반 트렌드 탐색 + 학생 질문 실시간 분석")
+if "votes" not in st.session_state:
+    st.session_state.votes = {}
 
-# =============================
+if "selected_question" not in st.session_state:
+    st.session_state.selected_question = None
+
+# -----------------------------
 # 데이터 로드
-# =============================
+# -----------------------------
 @st.cache_data
 def load_data():
     try:
@@ -40,176 +44,137 @@ def load_data():
 
 df = load_data()
 
-# =============================
-# A. 연도별 트렌드
-# =============================
-st.subheader("A. 연도별 AI Agent 트렌드 변화")
-
-yearly_trend = df.groupby("Year").size().reset_index(name="Count")
-
-chart_a = (
-    alt.Chart(yearly_trend)
-    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
-    .encode(
-        x=alt.X("Year:O", title="연도"),
-        y=alt.Y("Count:Q", title="사례 수"),
-        tooltip=["Year", "Count"]
-    )
-    .properties(height=320)
+# -----------------------------
+# A. 연도별 트렌드 집계
+# -----------------------------
+yearly_trend = (
+    df.dropna(subset=["Year"])
+    .groupby("Year")
+    .size()
+    .reset_index(name="Count")
 )
 
-st.altair_chart(chart_a, use_container_width=True)
-st.divider()
+all_years = pd.DataFrame({
+    "Year": range(int(yearly_trend["Year"].min()), int(yearly_trend["Year"].max()) + 1)
+})
 
-# =============================
-# B. 역할 진화 단계
-# =============================
-st.subheader("B. AI Agent 역할 진화")
+yearly_trend = all_years.merge(
+    yearly_trend, on="Year", how="left"
+).fillna(0)
 
-def classify_role(text):
-    text = str(text).lower()
-    if re.search(r"multi|ecosystem|collaboration|swarm", text):
-        return "Multi-Agent System"
-    if re.search(r"autonomous|decision|agentic", text):
-        return "Autonomous Agent"
-    if re.search(r"chat|assistant|conversation", text):
-        return "Conversational Agent"
-    return "Task / Rule Agent"
+# -----------------------------
+# A-1. 시각화
+# -----------------------------
+st.subheader("📈 연도별 AI Agent 트렌드 변화")
 
-df["Role"] = df["Description"].apply(classify_role)
-
-role_trend = df.groupby(["Year", "Role"]).size().reset_index(name="Count")
-
-chart_b = (
-    alt.Chart(role_trend)
-    .mark_bar()
-    .encode(
-        x="Year:O",
-        y="Count:Q",
-        color="Role:N",
-        tooltip=["Year", "Role", "Count"]
-    )
-    .properties(height=380)
+bar = alt.Chart(yearly_trend).mark_bar(
+    cornerRadiusTopLeft=6,
+    cornerRadiusTopRight=6
+).encode(
+    x=alt.X("Year:O", title="연도"),
+    y=alt.Y("Count:Q", title="사례 수"),
+    tooltip=["Year", "Count"]
 )
 
-st.altair_chart(chart_b, use_container_width=True)
-st.divider()
+line = alt.Chart(yearly_trend).mark_line(
+    point=True,
+    strokeWidth=3
+).encode(
+    x="Year:O",
+    y="Count:Q"
+)
 
-# =============================
-# C. 학생 질문 입력
-# =============================
-st.header("C. 학생 질문 실시간 수집")
+st.altair_chart((bar + line).properties(height=380), use_container_width=True)
 
-with st.form("question_form", clear_on_submit=True):
-    q = st.text_input(
-        "💬 지금 가장 고민되는 질문을 적어보세요",
-        placeholder="예: AI 시대에 심리학 전공은 의미가 있을까요?"
-    )
-    submit = st.form_submit_button("질문 추가")
+st.caption(
+    "AI Agent 논의는 단순 자동화 → 협업 → 자율적 의사결정 구조로 확장되고 있습니다."
+)
 
-    if submit and q.strip():
-        st.session_state.questions.append(q.strip())
-        st.success("질문이 추가되었습니다!")
+# -----------------------------
+# B. AI Agent 역할 진화 단계
+# -----------------------------
+st.subheader("🧠 AI Agent 역할의 진화 단계")
 
-# =============================
-# 관심영역 추론 (클러스터링 기준)
-# =============================
-def infer_interest(question):
-    q = question.lower()
-    if re.search(r"코딩|개발|ai|기술", q):
-        return "기술·개발"
-    if re.search(r"심리|상담|사람|교육", q):
-        return "인간이해·심리"
-    if re.search(r"기획|전략|문제", q):
-        return "기획·문제해결"
-    if re.search(r"법|윤리|사회|정책", q):
-        return "판단·윤리·사회"
-    if re.search(r"불안|걱정|모르겠", q):
-        return "탐색·불안"
-    return "복합/탐색중"
+st.markdown("""
+**AI Agent는 단번에 똑똑해진 것이 아니라, 역할이 단계적으로 진화해 왔습니다.**
 
-# =============================
-# D-1. 질문 즉석 투표 (관심영역)
-# =============================
-st.divider()
-st.subheader("D-1. 질문 즉석 투표 (관심 영역)")
+1️⃣ **도구형 Agent**  
+- 단순 명령 수행 (예: 검색, 요약)  
+- 인간의 지시 없이는 스스로 움직이지 않음  
 
+2️⃣ **보조형 Agent**  
+- 추천, 초안 작성, 선택지 제안  
+- 인간의 판단을 돕는 조력자 역할  
+
+3️⃣ **협업형 Agent**  
+- 사람과 목표를 공유  
+- 여러 Agent 간 역할 분담 가능  
+
+4️⃣ **자율형 Agent**  
+- 목표 설정 → 실행 → 평가를 스스로 수행  
+- 조직·서비스 단위로 작동
+""")
+
+# -----------------------------
+# C. 질문 즉석 입력 & 투표
+# -----------------------------
+st.subheader("❓ 지금 떠오른 질문을 남겨보세요")
+
+new_q = st.text_input("질문을 입력하세요 (짧게!)")
+
+if st.button("질문 등록"):
+    if new_q.strip():
+        st.session_state.questions.append(new_q.strip())
+        st.session_state.votes[new_q.strip()] = 0
+
+# 투표
 if st.session_state.questions:
-    interests = [infer_interest(q) for q in st.session_state.questions]
-    vote_df = pd.DataFrame(Counter(interests).items(), columns=["관심 영역", "질문 수"])
-
-    vote_chart = (
-        alt.Chart(vote_df)
-        .mark_bar(cornerRadius=5)
-        .encode(
-            x="관심 영역:N",
-            y="질문 수:Q",
-            tooltip=["관심 영역", "질문 수"]
-        )
-        .properties(height=300)
-    )
-
-    st.altair_chart(vote_chart, use_container_width=True)
-else:
-    st.info("아직 질문이 없습니다.")
-
-# =============================
-# D-2. 워드클라우드 (Altair 버전)
-# =============================
-st.divider()
-st.subheader("D-2. 질문 워드클라우드")
-
-if st.session_state.questions:
-    words = []
+    st.markdown("### 📊 질문 투표")
     for q in st.session_state.questions:
-        words += re.findall(r"[가-힣A-Za-z]{2,}", q)
+        col1, col2 = st.columns([5, 1])
+        col1.write(q)
+        if col2.button("👍", key=q):
+            st.session_state.votes[q] += 1
+            st.session_state.selected_question = q
 
-    word_freq = Counter(words)
-    wc_df = pd.DataFrame(word_freq.items(), columns=["word", "count"])
-
-    wc_chart = (
-        alt.Chart(wc_df)
-        .mark_text()
-        .encode(
-            text="word:N",
-            size=alt.Size("count:Q", scale=alt.Scale(range=[12, 60])),
-            tooltip=["word", "count"]
-        )
-        .properties(height=350)
-    )
-
-    st.altair_chart(wc_chart, use_container_width=True)
-else:
-    st.info("질문이 쌓이면 워드클라우드가 생성됩니다.")
-
-# =============================
-# D-3. 전공군별 자동 클러스터링
-# =============================
-st.divider()
-st.subheader("D-3. 전공군별 자동 클러스터링 결과")
-
-major_map = {
-    "기술·개발": "컴퓨터공학 / AI / 데이터",
-    "인간이해·심리": "심리학 / 교육 / 상담",
-    "기획·문제해결": "경영 / 산업공학 / 행정",
-    "판단·윤리·사회": "법 / 철학 / 정책",
-    "탐색·불안": "자유·융합전공",
-    "복합/탐색중": "복수·연계전공"
-}
+# -----------------------------
+# D. 워드클라우드 (가독성 개선)
+# -----------------------------
+st.subheader("☁️ 질문 키워드 한눈에 보기")
 
 if st.session_state.questions:
-    cluster_data = []
+    text = " ".join(st.session_state.questions)
 
-    for q in st.session_state.questions:
-        interest = infer_interest(q)
-        cluster_data.append({
-            "학생 질문": q,
-            "분류된 관심 영역": interest,
-            "추천 전공군": major_map[interest]
-        })
+    font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+    if not os.path.exists(font_path):
+        font_path = None  # Streamlit Cloud fallback
 
-    cluster_df = pd.DataFrame(cluster_data)
-    st.dataframe(cluster_df, use_container_width=True)
+    wc = WordCloud(
+        font_path=font_path,
+        background_color="white",
+        width=900,
+        height=400,
+        max_words=50,
+        collocations=False
+    ).generate(text)
 
-else:
-    st.info("질문이 아직 없어 클러스터링을 할 수 없습니다.")
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.imshow(wc, interpolation="bilinear")
+    ax.axis("off")
+    st.pyplot(fig)
+
+# -----------------------------
+# D-1. 선택된 질문에 대한 AI 해설
+# -----------------------------
+if st.session_state.selected_question:
+    st.subheader("🤖 AI의 생각")
+
+    st.markdown(f"""
+**선택된 질문:**  
+> *{st.session_state.selected_question}*
+
+**AI 해설:**  
+이 질문은 AI Agent의 *역할 확장*과 *인간의 선택* 사이의 관계를 고민하게 합니다.  
+앞으로 AI는 ‘대신 결정하는 존재’라기보다,  
+👉 **결정을 더 잘하게 돕는 존재**로 진화할 가능성이 큽니다.
+""")
