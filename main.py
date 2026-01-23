@@ -22,7 +22,25 @@ def load_data():
     df["Year"] = df["Date"].dt.year
     return df
 
-df = load_data()
+@st.cache_data
+def load_data():
+    try:
+        # 1차 시도: UTF-8
+        df = pd.read_csv("AI_Agents_Ecosystem_2026.csv", encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            # 2차 시도: CP949 (한국 엑셀 최다)
+            df = pd.read_csv("AI_Agents_Ecosystem_2026.csv", encoding="cp949")
+        except UnicodeDecodeError:
+            st.error(
+                "CSV 파일 인코딩을 읽을 수 없습니다. "
+                "UTF-8 또는 CP949 형식으로 저장해 주세요."
+            )
+            st.stop()
+
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df["Year"] = df["Date"].dt.year
+    return df
 
 # -----------------------------
 # 연도별 트렌드 집계
