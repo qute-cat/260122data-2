@@ -2,9 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from collections import Counter
-from wordcloud import WordCloud
-import matplotlib.pyplot as plt
-import os
+import re
 
 # -----------------------------
 # 기본 설정
@@ -45,7 +43,7 @@ def load_data():
 df = load_data()
 
 # -----------------------------
-# A. 연도별 트렌드 집계
+# A. 연도별 AI Agent 트렌드
 # -----------------------------
 yearly_trend = (
     df.dropna(subset=["Year"])
@@ -62,72 +60,62 @@ yearly_trend = all_years.merge(
     yearly_trend, on="Year", how="left"
 ).fillna(0)
 
-# -----------------------------
-# A-1. 시각화
-# -----------------------------
 st.subheader("📈 연도별 AI Agent 트렌드 변화")
 
-bar = alt.Chart(yearly_trend).mark_bar(
-    cornerRadiusTopLeft=6,
-    cornerRadiusTopRight=6
-).encode(
-    x=alt.X("Year:O", title="연도"),
-    y=alt.Y("Count:Q", title="사례 수"),
-    tooltip=["Year", "Count"]
+chart = (
+    alt.Chart(yearly_trend)
+    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+    .encode(
+        x=alt.X("Year:O", title="연도"),
+        y=alt.Y("Count:Q", title="사례 수"),
+        tooltip=["Year", "Count"]
+    )
+    .properties(height=380)
 )
 
-line = alt.Chart(yearly_trend).mark_line(
-    point=True,
-    strokeWidth=3
-).encode(
-    x="Year:O",
-    y="Count:Q"
-)
-
-st.altair_chart((bar + line).properties(height=380), use_container_width=True)
+st.altair_chart(chart, use_container_width=True)
 
 st.caption(
-    "AI Agent 논의는 단순 자동화 → 협업 → 자율적 의사결정 구조로 확장되고 있습니다."
+    "AI Agent 논의는 자동화 도구 → 협업 파트너 → 자율적 실행 주체로 진화하고 있습니다."
 )
 
 # -----------------------------
-# B. AI Agent 역할 진화 단계
+# B. AI Agent 역할 진화 설명
 # -----------------------------
-st.subheader("🧠 AI Agent 역할의 진화 단계")
+st.subheader("🧠 AI Agent 역할의 진화")
 
 st.markdown("""
-**AI Agent는 단번에 똑똑해진 것이 아니라, 역할이 단계적으로 진화해 왔습니다.**
+AI Agent는 한 번에 완성된 존재가 아니라 **역할이 단계적으로 확장**되어 왔습니다.
 
-1️⃣ **도구형 Agent**  
-- 단순 명령 수행 (예: 검색, 요약)  
-- 인간의 지시 없이는 스스로 움직이지 않음  
+**① 도구형 Agent**  
+- 명령 수행 중심 (검색, 요약)  
+- 인간 지시 없이는 행동 불가  
 
-2️⃣ **보조형 Agent**  
-- 추천, 초안 작성, 선택지 제안  
-- 인간의 판단을 돕는 조력자 역할  
+**② 보조형 Agent**  
+- 추천, 초안, 비교 제안  
+- 인간의 판단을 보조  
 
-3️⃣ **협업형 Agent**  
-- 사람과 목표를 공유  
-- 여러 Agent 간 역할 분담 가능  
+**③ 협업형 Agent**  
+- 인간과 목표 공유  
+- 여러 Agent 간 역할 분담  
 
-4️⃣ **자율형 Agent**  
-- 목표 설정 → 실행 → 평가를 스스로 수행  
-- 조직·서비스 단위로 작동
+**④ 자율형 Agent**  
+- 목표 설정 → 실행 → 평가  
+- 서비스·조직 단위로 작동
 """)
 
 # -----------------------------
-# C. 질문 즉석 입력 & 투표
+# C. 질문 입력 & 투표
 # -----------------------------
 st.subheader("❓ 지금 떠오른 질문을 남겨보세요")
 
-new_q = st.text_input("질문을 입력하세요 (짧게!)")
+new_q = st.text_input("질문을 입력하세요 (짧게)")
 
 if st.button("질문 등록"):
     if new_q.strip():
         st.session_state.questions.append(new_q.strip())
         st.session_state.votes[new_q.strip()] = 0
 
-# 투표
 if st.session_state.questions:
     st.markdown("### 📊 질문 투표")
     for q in st.session_state.questions:
@@ -138,43 +126,51 @@ if st.session_state.questions:
             st.session_state.selected_question = q
 
 # -----------------------------
-# D. 워드클라우드 (가독성 개선)
+# D. 키워드 빈도 시각화 (워드클라우드 대체)
 # -----------------------------
-st.subheader("☁️ 질문 키워드 한눈에 보기")
+st.subheader("☁️ 질문 핵심 키워드")
 
 if st.session_state.questions:
-    text = " ".join(st.session_state.questions)
+    stopwords = {"AI", "에이전트", "어떻게", "왜", "무엇", "할까", "인가"}
+    words = []
 
-    font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
-    if not os.path.exists(font_path):
-        font_path = None  # Streamlit Cloud fallback
+    for q in st.session_state.questions:
+        cleaned = re.sub(r"[^\w\s]", "", q)
+        for w in cleaned.split():
+            if len(w) > 1 and w not in stopwords:
+                words.append(w)
 
-    wc = WordCloud(
-        font_path=font_path,
-        background_color="white",
-        width=900,
-        height=400,
-        max_words=50,
-        collocations=False
-    ).generate(text)
+    counter = Counter(words)
+    keyword_df = pd.DataFrame(counter.most_common(15), columns=["Keyword", "Count"])
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.imshow(wc, interpolation="bilinear")
-    ax.axis("off")
-    st.pyplot(fig)
+    keyword_chart = (
+        alt.Chart(keyword_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("Count:Q", title="빈도"),
+            y=alt.Y("Keyword:N", sort="-x", title="키워드"),
+            tooltip=["Keyword", "Count"]
+        )
+        .properties(height=400)
+    )
+
+    st.altair_chart(keyword_chart, use_container_width=True)
 
 # -----------------------------
-# D-1. 선택된 질문에 대한 AI 해설
+# D-1. 선택 질문 AI 해설
 # -----------------------------
 if st.session_state.selected_question:
-    st.subheader("🤖 AI의 생각")
+    st.subheader("🤖 AI의 해설")
 
     st.markdown(f"""
-**선택된 질문:**  
+**선택된 질문**  
 > *{st.session_state.selected_question}*
 
-**AI 해설:**  
-이 질문은 AI Agent의 *역할 확장*과 *인간의 선택* 사이의 관계를 고민하게 합니다.  
-앞으로 AI는 ‘대신 결정하는 존재’라기보다,  
-👉 **결정을 더 잘하게 돕는 존재**로 진화할 가능성이 큽니다.
+**AI 해설**  
+이 질문은 AI Agent의 진화가  
+단순한 기술 문제가 아니라 **인간의 선택과 역할 재정의 문제**임을 보여줍니다.
+
+앞으로 AI는  
+👉 *결정을 대신하는 존재*가 아니라  
+👉 *더 나은 결정을 가능하게 하는 파트너*로 발전할 가능성이 큽니다.
 """)
