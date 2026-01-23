@@ -1,4 +1,6 @@
 import os
+import re
+from collections import Counter
 
 import streamlit as st
 import pandas as pd
@@ -14,95 +16,54 @@ except ImportError:
     openai_available = False
 
 # -------------------------------------------------
-# 1. 페이지 설정
+# 페이지 설정
 # -------------------------------------------------
-st.set_page_config(
-    page_title="AI Agent 트렌드 이해",
-    layout="wide"
-)
+st.set_page_config(page_title="AI Agent 트렌드 이해", layout="wide")
 
 st.title("🤖 AI Agent 유형별 트렌드 이해")
 st.subheader("고3·대학생 대상 진로·전공 탐색 특강")
 
-st.markdown(
-    """
+st.markdown("""
 이 대시는 **AI Agent가 어떤 역할로 발전하고 있는지**를 살펴보고,  
-앞으로 **어떤 전공과 역량이 중요해질지** 생각해보기 위한 특강 자료입니다.
-"""
-)
+학생들의 **질문과 관심사**를 함께 이해하기 위한 특강용 도구입니다.
+""")
 
 # -------------------------------------------------
-# 2. 예시 데이터 (CSV 사용 ❌)
+# 예시 데이터
 # -------------------------------------------------
 df = pd.DataFrame({
-    "연도": [
-        2020, 2020,
-        2021, 2021,
-        2022, 2022,
-        2023, 2023,
-        2024, 2024
-    ],
+    "연도": [2020,2020,2021,2021,2022,2022,2023,2023,2024,2024],
     "AI_Agent_유형": [
-        "Task-oriented Agent", "Conversational Agent",
-        "Task-oriented Agent", "Conversational Agent",
-        "Conversational Agent", "Autonomous Agent",
-        "Autonomous Agent", "Multi-Agent System",
-        "Multi-Agent System", "Autonomous Agent"
+        "Task-oriented Agent","Conversational Agent",
+        "Task-oriented Agent","Conversational Agent",
+        "Conversational Agent","Autonomous Agent",
+        "Autonomous Agent","Multi-Agent System",
+        "Multi-Agent System","Autonomous Agent"
     ]
 })
 
 # -------------------------------------------------
-# 3. AI Agent 유형별 빈도
+# 유형별 빈도
 # -------------------------------------------------
 st.header("① AI Agent 유형별 등장 빈도")
 
-type_counts = (
-    df
-    .groupby("AI_Agent_유형")
-    .size()
-    .reset_index(name="등장 빈도")
-)
+type_counts = df.groupby("AI_Agent_유형").size().reset_index(name="등장 빈도")
 
 fig1 = px.bar(
     type_counts,
     x="AI_Agent_유형",
     y="등장 빈도",
-    title="AI Agent 유형별 등장 빈도",
-    range_y=[0, 20]
+    range_y=[0, 20],
+    title="AI Agent 유형별 등장 빈도"
 )
-
 st.plotly_chart(fig1, use_container_width=True)
 
 # -------------------------------------------------
-# 4. 기본 해석
-# -------------------------------------------------
-st.markdown(
-    """
-### 🧠 어떻게 해석하면 좋을까?
-
-- **Task-oriented Agent**  
-  정해진 일을 대신 처리하는 AI (과제 보조, 일정 관리)
-
-- **Conversational Agent**  
-  사람과 대화를 잘하는 AI (상담, 고객 응대)
-
-📌 **핵심 메시지**  
-> 지금까지의 AI는  
-> **사람을 돕는 도구 중심**으로 발전해 왔습니다.
-"""
-)
-
-# -------------------------------------------------
-# 5. 연도별 트렌드 변화
+# 연도별 트렌드
 # -------------------------------------------------
 st.header("② 연도별 AI Agent 트렌드 변화")
 
-trend = (
-    df
-    .groupby(["연도", "AI_Agent_유형"])
-    .size()
-    .reset_index(name="건수")
-)
+trend = df.groupby(["연도","AI_Agent_유형"]).size().reset_index(name="건수")
 
 fig2 = px.line(
     trend,
@@ -110,137 +71,118 @@ fig2 = px.line(
     y="건수",
     color="AI_Agent_유형",
     markers=True,
-    title="연도별 AI Agent 유형 변화",
-    range_y=[0, 20]
+    range_y=[0, 20],
+    title="연도별 AI Agent 유형 변화"
 )
-
 st.plotly_chart(fig2, use_container_width=True)
 
 # -------------------------------------------------
-# 6. OpenAI 클라이언트 준비
+# OpenAI 클라이언트
 # -------------------------------------------------
 client = None
 if openai_available and os.getenv("OPENAI_API_KEY"):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # -------------------------------------------------
-# 7. AI 그래프 해석 버튼
+# 학생 질문 입력 (익명 수집)
 # -------------------------------------------------
-st.header("③ AI가 설명해주는 그래프 해석")
+st.header("③ 학생 질문 (익명)")
 
-if not openai_available:
-    st.warning("⚠️ AI 해석 기능은 현재 환경에서 사용할 수 없습니다.")
-    st.info("openai 라이브러리가 설치된 환경에서 사용 가능합니다.")
+if "questions" not in st.session_state:
+    st.session_state["questions"] = []
 
-elif not os.getenv("OPENAI_API_KEY"):
-    st.warning("⚠️ OpenAI API Key가 설정되어 있지 않습니다.")
-    st.info("Streamlit Secrets에 OPENAI_API_KEY를 추가해주세요.")
+question = st.text_area(
+    "✏️ 궁금한 점을 자유롭게 적어주세요 (익명)",
+    placeholder="예: 문과도 AI 관련 진로를 가질 수 있나요?"
+)
+
+if st.button("📥 질문 제출"):
+    if question.strip():
+        st.session_state["questions"].append(question.strip())
+        st.success("질문이 익명으로 저장되었습니다!")
+    else:
+        st.warning("질문을 입력해주세요.")
+
+# -------------------------------------------------
+# 질문 유형 자동 분류 (규칙 기반)
+# -------------------------------------------------
+def classify_question(text):
+    text = text.lower()
+    if re.search("전공|학과|과|컴공|심리", text):
+        return "전공/학과"
+    if re.search("공부|역량|준비|수학|코딩", text):
+        return "역량/공부법"
+    if re.search("직업|취업|일자리|커리어", text):
+        return "진로/직업"
+    if re.search("불안|걱정|괜찮|못할", text):
+        return "불안/고민"
+    return "기타"
+
+# -------------------------------------------------
+# 질문 분석 결과
+# -------------------------------------------------
+st.header("④ 학생 질문 분석 결과")
+
+if st.session_state["questions"]:
+    q_df = pd.DataFrame({
+        "질문": st.session_state["questions"],
+        "유형": [classify_question(q) for q in st.session_state["questions"]]
+    })
+
+    # 유형 분포
+    type_dist = q_df["유형"].value_counts().reset_index()
+    type_dist.columns = ["질문 유형", "건수"]
+
+    fig_type = px.bar(
+        type_dist,
+        x="질문 유형",
+        y="건수",
+        title="학생 질문 유형 분포"
+    )
+    st.plotly_chart(fig_type, use_container_width=True)
+
+    # -------------------------------------------------
+    # 워드클라우드 대체 시각화 (빈도 기반)
+    # -------------------------------------------------
+    st.subheader("🧠 질문 키워드 클라우드")
+
+    words = []
+    for q in st.session_state["questions"]:
+        words += re.findall(r"[가-힣]{2,}", q)
+
+    word_freq = Counter(words).most_common(20)
+
+    if word_freq:
+        wc_df = pd.DataFrame(word_freq, columns=["키워드","빈도"])
+
+        fig_wc = px.scatter(
+            wc_df,
+            x="키워드",
+            y="빈도",
+            size="빈도",
+            text="키워드",
+            title="학생 질문 키워드 클라우드"
+        )
+        fig_wc.update_traces(textposition="top center")
+        st.plotly_chart(fig_wc, use_container_width=True)
+    else:
+        st.info("아직 키워드가 충분하지 않습니다.")
 
 else:
-    if st.button("🤖 AI로 그래프 해석 보기"):
-        with st.spinner("AI가 그래프를 해석 중입니다..."):
-            summary_text = ""
-            for _, row in trend.iterrows():
-                summary_text += f"{row['연도']}년 {row['AI_Agent_유형']} {row['건수']}건\n"
-
-            prompt = f"""
-다음은 연도별 AI Agent 유형 변화 데이터 요약입니다.
-
-{summary_text}
-
-이 데이터를 바탕으로
-1) 고3 학생도 이해할 수 있게 설명하고
-2) 진로·전공 선택과 연결되는 핵심 메시지를 3줄 이내로 정리해줘
-"""
-
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "너는 고등학생과 대학생을 위한 진로 특강 전문가야."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.4
-            )
-
-        st.success("AI 해석 결과")
-        st.write(response.choices[0].message.content)
+    st.info("아직 수집된 질문이 없습니다.")
 
 # -------------------------------------------------
-# 8. ⭐ 학생 질문 입력 → AI 응답 ⭐
+# 마무리 메시지
 # -------------------------------------------------
-st.header("④ 학생 질문 → AI 답변")
+st.success("""
+🎯 이 분석이 의미하는 것
 
-st.markdown(
-    """
-그래프와 설명을 보고 **궁금해진 점을 자유롭게 질문해보세요.**  
-(예: *이런 AI는 어떤 전공이 유리한가요?*, *문과도 가능한가요?*)
-"""
-)
+- 학생들의 질문은 **이미 진로·전공 고민 중심**
+- 기술보다 **불안·가능성·선택**에 더 관심
+- 특강의 역할은  
+  👉 정답 제시 ❌  
+  👉 질문을 구조화해주는 것 ⭕
 
-student_question = st.text_area(
-    "✏️ 질문을 입력하세요",
-    placeholder="예: AI Agent 시대에 문과 학생은 어떤 준비를 하면 좋을까요?"
-)
-
-if openai_available and os.getenv("OPENAI_API_KEY"):
-    if st.button("🙋 AI에게 질문하기") and student_question.strip():
-        with st.spinner("AI가 질문에 답변 중입니다..."):
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "너는 고3·대학생을 대상으로 진로와 전공을 설명하는 친절한 멘토야. "
-                            "전문용어는 풀어서 설명하고, 불안감을 줄이는 방향으로 답변해."
-                        )
-                    },
-                    {"role": "user", "content": student_question}
-                ],
-                temperature=0.5
-            )
-
-        st.success("AI 답변")
-        st.write(response.choices[0].message.content)
-
-elif student_question.strip():
-    st.info("💡 AI 답변 기능을 사용하려면 OpenAI API Key 설정이 필요합니다.")
-
-# -------------------------------------------------
-# 9. 진로·전공 시사점
-# -------------------------------------------------
-st.header("⑤ 진로·전공 선택에 주는 메시지")
-
-st.markdown(
-    """
-### 🎯 앞으로 중요한 역량
-
-✔ 단순 코딩만 잘하는 사람 ❌  
-✔ **AI에게 일을 시킬 수 있는 사람 ⭕**
-
-#### 연결 전공 예시
-- 인공지능 / 컴퓨터공학
-- 심리학 / 인지과학
-- 산업공학 / 서비스기획
-- 교육 / 상담 / 정책
-
-📌 **정리**  
-> AI 시대의 경쟁력은  
-> **기술 + 인간 이해 + 문제 정의 능력**입니다.
-"""
-)
-
-# -------------------------------------------------
-# 10. 특강 마무리
-# -------------------------------------------------
-st.success(
-    """
-🎓 오늘의 질문
-
-👉 나는 AI를 **만드는 사람**인가?  
-👉 AI와 **함께 일하는 사람**인가?  
-👉 AI를 **활용해 문제를 해결하는 사람**인가?
-
-이 질문이 여러분의 전공 선택과 대학 생활의 출발점이 되길 바랍니다.
-"""
-)
+이제 AI는 설명 도구가 아니라  
+**학생 생각을 꺼내주는 도구**입니다.
+""")
