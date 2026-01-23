@@ -129,7 +129,6 @@ if st.session_state["questions"]:
         "유형": [classify_question(q) for q in st.session_state["questions"]]
     })
 
-    # 유형 분포
     type_dist = q_df["유형"].value_counts().reset_index()
     type_dist.columns = ["질문 유형", "건수"]
 
@@ -142,7 +141,7 @@ if st.session_state["questions"]:
     st.plotly_chart(fig_type, use_container_width=True)
 
     # -------------------------------------------------
-    # 워드클라우드 대체 시각화 (빈도 기반)
+    # 워드클라우드 대체 시각화
     # -------------------------------------------------
     st.subheader("🧠 질문 키워드 클라우드")
 
@@ -167,6 +166,54 @@ if st.session_state["questions"]:
         st.plotly_chart(fig_wc, use_container_width=True)
     else:
         st.info("아직 키워드가 충분하지 않습니다.")
+
+    # -------------------------------------------------
+    # AI가 학생 질문에 답해주기
+    # -------------------------------------------------
+    st.header("⑤ AI에게 질문해보기")
+
+    selected_q = st.selectbox(
+        "📌 AI에게 답을 듣고 싶은 질문을 선택하세요",
+        st.session_state["questions"]
+    )
+
+    if st.button("🤖 AI 답변 생성"):
+        if client:
+            with st.spinner("AI가 학생 눈높이로 답변 중..."):
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "너는 고3과 대학생을 대상으로 진로 특강을 하는 상담 전문가야."},
+                        {"role": "user", "content": selected_q}
+                    ],
+                    temperature=0.5
+                )
+            st.success("AI 답변")
+            st.write(response.choices[0].message.content)
+        else:
+            st.warning("OpenAI API 키가 설정되어 있지 않습니다.")
+
+    # -------------------------------------------------
+    # AI가 전체 질문 요약
+    # -------------------------------------------------
+    st.header("⑥ AI가 본 학생들의 관심사 요약")
+
+    if st.button("🧠 학생 관심사 AI 요약"):
+        if client:
+            joined_q = "\n".join(st.session_state["questions"])
+            with st.spinner("AI가 질문을 분석 중입니다..."):
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "너는 교육 연구자이자 진로 상담 전문가야."},
+                        {"role": "user", "content": f"다음은 학생들의 질문이야:\n{joined_q}\n\n이 질문들을 통해 드러나는 학생들의 핵심 관심사와 불안을 5줄 이내로 요약해줘."}
+                    ],
+                    temperature=0.4
+                )
+            st.success("AI 요약 결과")
+            st.write(response.choices[0].message.content)
+        else:
+            st.warning("OpenAI API 키가 설정되어 있지 않습니다.")
 
 else:
     st.info("아직 수집된 질문이 없습니다.")
