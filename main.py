@@ -45,7 +45,7 @@ def load_data(path: str) -> pd.DataFrame:
     """
     기대 스키마: Title, Source, Date, Description, Link
     """
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, encoding="cp949")
 
     # 컬럼 정규화(대소문자/공백 대응)
     colmap = {c.strip().lower(): c for c in df.columns}
