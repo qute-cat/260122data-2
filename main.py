@@ -104,6 +104,39 @@ fig2 = px.line(
     title="연도별 AI Agent 유형 변화",
     range_y=[0, 20]
 )
+st.header("④ AI가 설명해주는 그래프 해석")
+
+# OpenAI 클라이언트
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# 그래프 요약 데이터 생성
+summary_text = ""
+for _, row in trend.iterrows():
+    summary_text += f"{row['연도']}년 {row['AI_Agent_유형']} {row['건수']}건\n"
+
+prompt = f"""
+다음은 연도별 AI Agent 유형 변화 데이터 요약입니다.
+
+{summary_text}
+
+이 데이터를 바탕으로
+1) 고3 학생 눈높이로 이해할 수 있게 설명하고
+2) 진로·전공 선택과 연결되는 핵심 메시지를 3줄 이내로 정리해줘
+"""
+
+if st.button("🤖 AI 해석 생성"):
+    with st.spinner("AI가 그래프를 해석 중입니다..."):
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "너는 진로 특강을 돕는 교육 전문가야."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.4
+        )
+
+    st.success("AI 해석 결과")
+    st.write(response.choices[0].message.content)
 
 st.plotly_chart(fig2, use_container_width=True)
 
