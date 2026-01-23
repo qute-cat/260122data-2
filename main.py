@@ -11,6 +11,15 @@ st.set_page_config(
     layout="wide"
 )
 
+# -----------------------------
+# session_state 초기화 (🔥 핵심)
+# -----------------------------
+if "questions" not in st.session_state:
+    st.session_state.questions = []
+
+# -----------------------------
+# 페이지 타이틀
+# -----------------------------
 st.title("🤖 AI Agent는 어떻게 진화하고 있을까?")
 st.caption("AI Agent 생태계 데이터 기반 트렌드 탐색")
 
@@ -97,9 +106,6 @@ role_trend = (
     .reset_index(name="Count")
 )
 
-# -----------------------------
-# 누적 막대 그래프
-# -----------------------------
 chart_b = (
     alt.Chart(role_trend)
     .mark_bar()
@@ -125,37 +131,12 @@ chart_b = (
 
 st.altair_chart(chart_b, use_container_width=True)
 
-# -----------------------------
-# B 단계 해석
-# -----------------------------
-st.markdown("""
-### 🧠 B 단계 해석 가이드 (특강용)
-
-- 초기: **시키는 대로만 하는 AI**
-- 중기: **대화하고 돕는 AI**
-- 최근: **스스로 판단하고**
-- 현재/미래: **AI들끼리 협력**
-
-📌 즉, AI는  
-**도구 → 동료 → 시스템 구성원**으로 이동 중입니다.
-""")
-
-st.success("""
-🎯 핵심 질문 (학생에게 던질 질문)
-
-👉 나는  
-AI에게 **명령하는 사람**이 될까?  
-AI와 **협력하는 사람**이 될까?  
-AI의 **판단을 설계하는 사람**이 될까?
-""")
-
 st.divider()
-st.subheader("C. AI 시대, 전공·진로는 어떻게 달라질까?")
 
-st.markdown("""
-AI Agent의 역할이 진화할수록  
-**사람에게 요구되는 능력도 달라집니다.**
-""")
+# =============================
+# C. 전공·진로 연결
+# =============================
+st.subheader("C. AI 시대, 전공·진로는 어떻게 달라질까?")
 
 role_map = pd.DataFrame({
     "AI Agent 단계": [
@@ -186,41 +167,30 @@ role_map = pd.DataFrame({
 
 st.dataframe(role_map, use_container_width=True)
 
-st.markdown("""
-### 🎯 학생에게 꼭 던지고 싶은 말
+st.divider()
 
-- AI 시대에도 **사람은 사라지지 않는다**
-- 대신,  
-  👉 **시키는 사람**  
-  👉 **설명하는 사람**  
-  👉 **판단 기준을 만드는 사람**  
-  👉 **전체를 연결하는 사람**이 필요해진다
+# =============================
+# D. 학생 질문 기반 추천
+# =============================
+st.header("⑤ 학생 질문 기반 맞춤 전공·진로 힌트")
 
-📌 전공 선택은  
-**‘AI보다 잘할 수 있는 역할’을 고르는 과정**이다.
-""")
+# -----------------------------
+# 관심 영역 추론 함수 (누락 보완)
+# -----------------------------
+def infer_interest(question):
+    q = question.lower()
 
-st.success("""
-🎓 스스로에게 던져볼 질문
-
-1️⃣ 나는 문제를 **정의하는 사람**인가?  
-2️⃣ 사람과 AI를 **이어주는 사람**인가?  
-3️⃣ AI의 판단을 **설계하는 사람**인가?  
-4️⃣ 여러 역할을 **조정하는 사람**인가?
-
-👉 이 질문이 전공 선택의 출발점이다.
-""")
-
-st.success("""
-🎓 스스로에게 던져볼 질문
-
-1️⃣ 나는 문제를 **정의하는 사람**인가?  
-2️⃣ 사람과 AI를 **이어주는 사람**인가?  
-3️⃣ AI의 판단을 **설계하는 사람**인가?  
-4️⃣ 여러 역할을 **조정하는 사람**인가?
-
-👉 이 질문이 전공 선택의 출발점이다.
-""")
+    if re.search(r"코딩|개발|프로그래밍|ai|기술", q):
+        return "기술·개발"
+    if re.search(r"사람|심리|상담|교육", q):
+        return "인간이해·심리"
+    if re.search(r"기획|문제|전략", q):
+        return "기획·문제해결"
+    if re.search(r"윤리|법|사회|정책", q):
+        return "판단·윤리·사회"
+    if re.search(r"불안|모르겠|걱정", q):
+        return "불안·자기효능"
+    return "복합/탐색중"
 
 interest_role_map = {
     "기술·개발": {
@@ -241,21 +211,18 @@ interest_role_map = {
     },
     "불안·자기효능": {
         "AI 시대 역할": "자기 탐색이 필요한 단계",
-        "추천 전공": "융합전공, 자유전공, 탐색 중심 전공"
+        "추천 전공": "융합전공, 자유전공"
     },
     "복합/탐색중": {
         "AI 시대 역할": "여러 역할을 탐색 중인 사람",
-        "추천 전공": "융합전공, 연계전공, 복수전공"
+        "추천 전공": "융합전공, 복수전공, 연계전공"
     }
 }
 
-st.divider()
-st.header("⑤ 학생 질문 기반 맞춤 전공·진로 힌트")
-
-if st.session_state["questions"]:
+if st.session_state.questions:
     rec_data = []
 
-    for q in st.session_state["questions"]:
+    for q in st.session_state.questions:
         interest = infer_interest(q)
         role_info = interest_role_map[interest]
 
