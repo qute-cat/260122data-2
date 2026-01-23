@@ -1,7 +1,3 @@
-import os
-from openai import OpenAI
-
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -43,7 +39,7 @@ df = pd.DataFrame({
 })
 
 # -------------------------------------------------
-# 3. AI Agent 유형별 빈도 (안정 방식)
+# 3. AI Agent 유형별 빈도
 # -------------------------------------------------
 st.header("① AI Agent 유형별 등장 빈도")
 
@@ -58,8 +54,7 @@ fig1 = px.bar(
     type_counts,
     x="AI_Agent_유형",
     y="등장 빈도",
-    title="AI Agent 유형별 등장 빈도",
-    range_y=[0, 20]
+    title="AI Agent 유형별 등장 빈도"
 )
 
 st.plotly_chart(fig1, use_container_width=True)
@@ -72,15 +67,15 @@ st.markdown("""
 
 - **Task-oriented Agent**
   - 정해진 일을 대신 처리하는 AI
-  - 예: 과제 보조, 일정 관리, 간단한 챗봇
+  - 예: 과제 보조, 일정 관리, 단순 자동화
 
 - **Conversational Agent**
   - 사람과 대화를 잘하는 AI
   - 예: 상담 챗봇, 고객 응대 AI
 
-📌 **핵심 메시지**
+📌 **핵심 메시지**  
 > 지금까지의 AI는  
-> **사람을 대신해 일을 ‘처리해주는 도구’에 가까웠다**고 볼 수 있습니다.
+> **사람을 돕는 ‘도구’의 역할이 중심**이었습니다.
 """)
 
 # -------------------------------------------------
@@ -101,95 +96,39 @@ fig2 = px.line(
     y="건수",
     color="AI_Agent_유형",
     markers=True,
-    title="연도별 AI Agent 유형 변화",
-    range_y=[0, 20]
+    title="연도별 AI Agent 유형 변화"
 )
 
 st.plotly_chart(fig2, use_container_width=True)
 
-st.header("④ AI가 설명해주는 그래프 해석")
-
-# OpenAI 클라이언트
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# 그래프 요약 데이터 생성
-summary_text = ""
-for _, row in trend.iterrows():
-    summary_text += f"{row['연도']}년 {row['AI_Agent_유형']} {row['건수']}건\n"
-
-prompt = f"""
-다음은 연도별 AI Agent 유형 변화 데이터 요약입니다.
-
-{summary_text}
-
-이 데이터를 바탕으로
-1) 고3 학생 눈높이로 이해할 수 있게 설명하고
-2) 진로·전공 선택과 연결되는 핵심 메시지를 3줄 이내로 정리해줘
-"""
-
-if st.button("🤖 AI 해석 생성"):
-    with st.spinner("AI가 그래프를 해석 중입니다..."):
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "너는 진로 특강을 돕는 교육 전문가야."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.4
-        )
-
-    st.success("AI 해석 결과")
-    st.write(response.choices[0].message.content)
-
-
-
 # -------------------------------------------------
-# 6. 트렌드 해석
+# 6. 그래프 종합 해석 (특강용 고정 텍스트)
 # -------------------------------------------------
-st.markdown("""
-### 🔍 변화의 방향은?
+st.header("③ 그래프 종합 해석 (특강용)")
 
-- 최근으로 갈수록:
-  - **Autonomous Agent**
-  - **Multi-Agent System**
-  이 등장하고 있습니다.
+st.info("""
+### 📈 이 그래프가 말해주는 변화
 
-📌 이는 AI가  
-> **사람의 지시를 기다리는 존재 →  
-> 스스로 판단하고 협력하는 존재**로 발전하고 있다는 신호입니다.
+- 초기 AI → **정해진 일을 잘하는 AI**
+- 최근 AI → **스스로 판단하고 협력하는 AI**
+
+📌 즉,
+> AI는 이제  
+> **‘시키는 대로 하는 존재’가 아니라  
+> ‘함께 일하는 파트너’로 진화 중**입니다.
 """)
 
 # -------------------------------------------------
 # 7. 진로·전공 탐색 시사점
 # -------------------------------------------------
-st.header("③ 진로·전공 선택에 주는 메시지")
+st.header("④ 진로·전공 선택에 주는 메시지")
 
 st.markdown("""
 ### 🎯 앞으로 중요한 역량
 
-✔ 단순 코딩 능력만으로는 부족  
-✔ **AI가 무엇을 해야 하는지 정의하는 능력**이 중요
+✔ 단순 기술 습득 ❌  
+✔ **AI에게 일을 맡기고 설계하는 능력 ⭕**
 
 #### 연결 가능한 전공
 - 인공지능 / 컴퓨터공학
-- 심리학 / 인지과학
-- 산업공학 / 서비스기획
-- 교육 / 상담 / 정책
-
-📌 **정리**
-> AI 시대의 경쟁력은  
-> **기술 + 인간 이해 + 문제 해결 능력**의 결합입니다.
-""")
-
-# -------------------------------------------------
-# 8. 특강 마무리
-# -------------------------------------------------
-st.success("""
-🎓 오늘의 질문
-
-👉 나는 AI를 **만드는 사람**인가?  
-👉 AI와 **함께 일하는 사람**인가?  
-👉 AI를 **활용해 문제를 해결하는 사람**인가?
-
-이 질문이 여러분의 전공 선택과 대학 생활의 출발점이 되길 바랍니다.
-""")
+- 심리학 / 인지과
